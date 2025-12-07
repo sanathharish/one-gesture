@@ -29,6 +29,7 @@ Computer Vision	OpenCV
 OS Automation	PyAutoGUI / pynput
 ML Training	Scikit-Learn / TensorFlow Lite
 Performance	Async loops, temporal smoothing (EMA/Kalman)
+
 📂 Project Structure
 gesture-control/
  ├─ main.py                    # Entry point
