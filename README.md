@@ -1,4 +1,4 @@
-🤝 Gesture Control AI — Real-Time Hand Tracking & OS Interaction
+🤝 One-Gesture — Real-Time Hand Tracking & OS Interaction
 
 A modular, extensible Python-based system for real-time hand- and finger-gesture control, featuring live visualization, gesture training, smoothing algorithms, and full OS automation support.
 Designed for research, prototyping, accessibility, robotics, AR/VR, and desktop interaction.
@@ -31,7 +31,7 @@ ML Training	Scikit-Learn / TensorFlow Lite
 Performance	Async loops, temporal smoothing (EMA/Kalman)
 
 📂 Project Structure
-gesture-control/
+one-gesture/
  ├─ main.py                    # Entry point
  ├─ requirements.txt
  ├─ README.md
