@@ -1,0 +1,26 @@
+opencv-python==4.10.0.84
+mediapipe==0.10.14
+numpy==1.26.4
+pandas==2.2.2
+
+# Interface / Debug Dashboard
+streamlit==1.40.1
+streamlit-webrtc==0.47.7
+
+# Machine Learning / Gesture Classification
+scikit-learn==1.5.1
+tensorflow==2.16.1   # optional (for deep learning gesture training)
+
+# OS Automation
+pyautogui==0.9.54
+pynput==1.7.6
+
+# Emojis, Overlay, & Logging
+rich==13.7.1
+loguru==0.7.2
+
+# Real-time performance helpers
+numba==0.60.0
+
+# Optional — Future integration (YOLO keypoints / upgrades)
+ultralytics==8.3.12
