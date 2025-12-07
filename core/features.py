@@ -1,74 +1,144 @@
-import math
-from collections import deque
-import numpy as np
+# core/features.py
 
+import math
+import numpy as np
+from collections import deque
+
+
+# ================================================================
+# FEATURE EXTRACTOR (Landmarks → Relative, Angles, Finger States)
+# ================================================================
 class FeatureExtractor:
     def __init__(self):
         pass
 
+    # --------------------------------------------------------------
+    # RELATIVE LANDMARKS (wrist-centered, normalized)
+    # --------------------------------------------------------------
     @staticmethod
     def landmark_to_relative(landmarks):
-        """
-        Convert absolute MediaPipe landmarks to relative coordinates
-        relative to the wrist (landmark 0) and normalized by hand size.
-        """
         if not landmarks:
             return []
 
         wrist = landmarks[0]
-        rel_landmarks = []
 
-        # Compute hand size as distance from wrist to middle finger tip
-        hand_size = math.dist((wrist.x, wrist.y), 
-                              (landmarks[12].x, landmarks[12].y)) + 1e-6
+        # normalize by wrist → middle fingertip distance
+        hand_size = math.dist(
+            (wrist.x, wrist.y),
+            (landmarks[12].x, landmarks[12].y)
+        ) + 1e-6
 
+        rel = []
         for lm in landmarks:
-            rel_x = (lm.x - wrist.x) / hand_size
-            rel_y = (lm.y - wrist.y) / hand_size
-            rel_landmarks.append((rel_x, rel_y))
-        return rel_landmarks
+            rel.append((
+                (lm.x - wrist.x) / hand_size,
+                (lm.y - wrist.y) / hand_size
+            ))
 
+        return rel
+
+    # --------------------------------------------------------------
+    # ANGLE CALCULATOR (3-point angle)
+    # --------------------------------------------------------------
     @staticmethod
-    def finger_states(landmarks):
+    def angle(a, b, c):
+        """Angle between points a-b-c in radians."""
+        a = np.array(a)
+        b = np.array(b)
+        c = np.array(c)
+
+        ba = a - b
+        bc = c - b
+
+        cosine = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
+        cosine = np.clip(cosine, -1.0, 1.0)
+
+        return np.arccos(cosine)
+
+    # --------------------------------------------------------------
+    # FINGER STATES (stable angle-based detection)
+    # --------------------------------------------------------------
+    @staticmethod
+    def finger_states(lm):
         """
-        Determine if fingers are open or closed (simple heuristic).
-        Returns list of 5 bools: [thumb, index, middle, ring, pinky]
+        Returns 5 values (0/1): Thumb, Index, Middle, Ring, Pinky.
+        Uses angle thresholds → extremely stable.
         """
-        if not landmarks:
-            return [False]*5
+
+        if lm is None or len(lm) < 21:
+            return [0, 0, 0, 0, 0]
+
+        pts = [(p.x, p.y) for p in lm]
+
+        # Joint chains for fingers
+        finger_joints = {
+            "Thumb":  [2, 3, 4],
+            "Index":  [5, 6, 8],
+            "Middle": [9, 10, 12],
+            "Ring":   [13, 14, 16],
+            "Pinky":  [17, 18, 20],
+        }
 
         states = []
-        # Thumb: tip vs MCP x coordinate (simple left/right check)
-        states.append(landmarks[4].x > landmarks[3].x)
-        # Other fingers: tip y < PIP y => extended
-        fingers = [(8,6), (12,10), (16,14), (20,18)]
-        for tip, pip in fingers:
-            states.append(landmarks[tip].y < landmarks[pip].y)
+
+        for name, (a, b, c) in finger_joints.items():
+            ang = FeatureExtractor.angle(pts[a], pts[b], pts[c])
+
+            # Stable threshold: 2.2 rad ≈ 126 degrees
+            extended = ang > 2.2
+            states.append(1 if extended else 0)
+
         return states
 
+    # --------------------------------------------------------------
+    # FINGER COUNT + NAMES
+    # --------------------------------------------------------------
+    @staticmethod
+    def finger_count_and_names(finger_states):
+        names = ["Thumb", "Index", "Middle", "Ring", "Pinky"]
+        fingers_up = [names[i] for i, v in enumerate(finger_states) if v == 1]
+        return len(fingers_up), fingers_up
+
+    # --------------------------------------------------------------
+    # HAND BOUNDING BOX
+    # --------------------------------------------------------------
     @staticmethod
     def hand_bounding_box(landmarks):
-        """
-        Compute axis-aligned bounding box for the hand.
-        Returns (x_min, y_min, x_max, y_max)
-        """
-        if not landmarks:
-            return 0,0,0,0
-
         xs = [lm.x for lm in landmarks]
         ys = [lm.y for lm in landmarks]
         return min(xs), min(ys), max(xs), max(ys)
 
+    # --------------------------------------------------------------
+    # HAND AREA (for zoom, push, pull)
+    # --------------------------------------------------------------
+    @staticmethod
+    def hand_area(landmarks):
+        xs = [lm.x for lm in landmarks]
+        ys = [lm.y for lm in landmarks]
+        return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+
+# ================================================================
+#     SMOOTHING FILTERS (Landmarks + finger states)
+# ================================================================
 class Smoother:
-    def __init__(self, window_size=5):
-        self.window_size = window_size
-        self.buffer = deque(maxlen=window_size)
+    """Smooths landmark positions using moving average."""
+    def __init__(self, window_size=7):
+        self.window = deque(maxlen=window_size)
 
     def smooth_points(self, points):
-        """
-        points = list of (x,y) tuples
-        """
-        self.buffer.append(points)
-        avg = np.mean(self.buffer, axis=0)
-        return [(float(p[0]), float(p[1])) for p in avg]
+        self.window.append(points)
+        avg = np.mean(self.window, axis=0)
+        return [(float(x), float(y)) for x, y in avg]
 
+
+class TemporalFingerStabilizer:
+    """Smooths finger states using majority voting."""
+    def __init__(self, history_size=7):
+        self.history = deque(maxlen=history_size)
+
+    def update(self, raw_states):
+        self.history.append(raw_states)
+        arr = np.array(self.history)
+        stable = (np.mean(arr, axis=0) > 0.6).astype(int)
+        return list(stable)
